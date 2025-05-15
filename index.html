@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Draw the Line</title>
+  <script type="text/javascript" async
+    src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 40px auto;
+      max-width: 700px;
+      padding: 20px;
+      background-color: #f9fafb;
+      color: #333;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 15px;
+      color: #2c3e50;
+    }
+    .radio-container {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .radio-container label {
+      margin: 0 10px;
+      cursor: pointer;
+    }
+    canvas {
+      display: block;
+      margin: 20px auto;
+      border: 1px solid #ccc;
+      background-color: white;
+      cursor: crosshair;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 18px;
+      margin: 8px 5px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    .feedback {
+      font-weight: bold;
+      margin-top: 20px;
+      text-align: center;
+    }
+    .tooltip {
+      position: absolute;
+      background-color: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 5px;
+      border-radius: 5px;
+      font-size: 0.8rem;
+      pointer-events: none;
+      display: none;
+    }
+    .answer-container {
+      text-align: center;
+      margin: 15px auto;
+      display: none;
+    }
+    .answer-container input {
+      padding: 8px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      width: 200px;
+      text-align: center;
+    }
+    .answer-container label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Line Equation Practice</h1>
+  
+  <div class="radio-container">
+    <label>
+      <input type="radio" name="questionType" value="drawLine" checked> Draw the Line
+    </label>
+    <label>
+      <input type="radio" name="questionType" value="findEquation"> Find the Equation
+    </label>
+  </div>
+  
+  <p id="question"></p>
+  <canvas id="grid" width="500" height="500"></canvas>
+  <div class="tooltip" id="tooltip"></div>
+  
+  <div class="answer-container" id="answerContainer">
+    <label for="equationInput">Your answer (e.g. y = 2x + 3 or y = -2/3x - 1):</label>
+    <input type="text" id="equationInput" placeholder="y = mx + c">
+  </div>
+  
+  <div style="text-align:center">
+    <button onclick="generateQuestion()">New Question</button>
+    <button onclick="checkAnswer()">Check Answer</button>
+    <button onclick="showSolution()">Give Up</button>
+  </div>
+  <div class="feedback" id="feedback"></div>
+
+  <script>
+  const canvas = document.getElementById("grid");
+  const ctx = canvas.getContext("2d");
+  const tooltip = document.getElementById("tooltip");
+  const answerContainer = document.getElementById("answerContainer");
+  const unit = 25;
+  const origin = { x: canvas.width / 2, y: canvas.height / 2 };
+
+  let currentLine = {};
+  let points = [];
+  let questionMode = "drawLine"; // Default mode
+
+  // Set up event listeners for the radio buttons
+  document.querySelectorAll('input[name="questionType"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      questionMode = e.target.value;
+      generateQuestion();
+    });
+  });
+
+  // Show coordinates on hover
+  canvas.addEventListener("mousemove", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.round((e.clientX - rect.left - origin.x) / unit);
+    const y = -Math.round((e.clientY - rect.top - origin.y) / unit);
+    
+    tooltip.style.display = "block";
+    tooltip.style.left = (e.clientX + 10) + "px";
+    tooltip.style.top = (e.clientY + 10) + "px";
+    tooltip.textContent = `(${x}, ${y})`;
+  });
+
+  canvas.addEventListener("mouseout", () => {
+    tooltip.style.display = "none";
+  });
+
+  canvas.addEventListener("click", (e) => {
+    // Only allow clicking points in drawLine mode
+    if (questionMode !== "drawLine") return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.round((e.clientX - rect.left - origin.x) / unit);
+    const y = -Math.round((e.clientY - rect.top - origin.y) / unit);
+    
+    // Only allow clicks within the visible grid bounds
+    if (x < -10 || x > 10 || y < -10 || y > 10) {
+      return;
+    }
+    
+    if (points.length >= 2) points = [];
+    points.push({ x, y });
+    drawGrid();
+    drawUserLine();
+  });
+
+  function drawGrid() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Grid lines
+    ctx.strokeStyle = "#ddd";
+    for (let x = -10; x <= 10; x++) {
+      ctx.beginPath();
+      ctx.moveTo(origin.x + x * unit, 0);
+      ctx.lineTo(origin.x + x * unit, canvas.height);
+      ctx.stroke();
+    }
+    for (let y = -10; y <= 10; y++) {
+      ctx.beginPath();
+      ctx.moveTo(0, origin.y - y * unit);
+      ctx.lineTo(canvas.width, origin.y - y * unit);
+      ctx.stroke();
+    }
+
+    // Axis lines
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, origin.y);
+    ctx.lineTo(canvas.width, origin.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(origin.x, 0);
+    ctx.lineTo(origin.x, canvas.height);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+
+    // Axis labels
+    ctx.fillStyle = "#000";
+    ctx.font = "12px sans-serif";
+    for (let i = -10; i <= 10; i++) {
+      if (i !== 0) {
+        // Add labels for every other unit to avoid crowding
+        if (i % 2 === 0) {
+          ctx.fillText(i, origin.x + i * unit - 5, origin.y + 15);
+          ctx.fillText(i, origin.x + 5, origin.y - i * unit + 4);
+        }
+        
+        // Add small ticks for each unit
+        ctx.beginPath();
+        ctx.moveTo(origin.x + i * unit, origin.y - 3);
+        ctx.lineTo(origin.x + i * unit, origin.y + 3);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(origin.x - 3, origin.y - i * unit);
+        ctx.lineTo(origin.x + 3, origin.y - i * unit);
+        ctx.stroke();
+      }
+    }
+    ctx.fillText("0", origin.x + 5, origin.y + 15);
+  }
+
+  function drawPoint(x, y, color = "red") {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(origin.x + x * unit, origin.y - y * unit, 5, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+
+  function drawLine(m, c, isVertical, xVal, color = "blue") {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (isVertical) {
+      const px = origin.x + xVal * unit;
+      ctx.moveTo(px, 0);
+      ctx.lineTo(px, canvas.height);
+    } else {
+      const x1 = -10, x2 = 10;
+      const y1 = m * x1 + c;
+      const y2 = m * x2 + c;
+      ctx.moveTo(origin.x + x1 * unit, origin.y - y1 * unit);
+      ctx.lineTo(origin.x + x2 * unit, origin.y - y2 * unit);
+    }
+    ctx.stroke();
+    ctx.lineWidth = 1; // reset line width
+  }
+
+  function drawGradientTriangle(m, c, color = "blue") {
+    if (m === 0) return; // No triangle for horizontal lines
+    
+    // Start from y-intercept (0, c)
+    const startX = 0;
+    const startY = c;
+    
+    // If m is a fraction, use denominator as the run
+    let run = 1;
+    if (currentLine.den) {
+      run = currentLine.den;
+    }
+    
+    // Rise is m * run
+    const rise = m * run;
+    
+    // Draw triangle from (0, c) to (run, c + rise)
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.fillStyle = "rgba(0, 128, 255, 0.2)";
+    
+    ctx.beginPath();
+    // Start at y-intercept
+    ctx.moveTo(origin.x + startX * unit, origin.y - startY * unit);
+    // Draw horizontal line to show "run"
+    ctx.lineTo(origin.x + (startX + run) * unit, origin.y - startY * unit);
+    // Draw vertical line to show "rise"
+    ctx.lineTo(origin.x + (startX + run) * unit, origin.y - (startY + rise) * unit);
+    // Close back to start point
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    
+    // Add labels
+    ctx.fillStyle = color;
+    ctx.font = "12px sans-serif";
+    
+    // Label rise
+    const riseText = Math.abs(rise) === 1 ? (rise > 0 ? "Rise: 1" : "Rise: -1") : `Rise: ${rise}`;
+    ctx.fillText(riseText, 
+                origin.x + (startX + run + 0.5) * unit, 
+                origin.y - (startY + rise/2) * unit);
+    
+    // Label run
+    const runText = Math.abs(run) === 1 ? "Run: 1" : `Run: ${run}`;
+    ctx.fillText(runText, 
+                origin.x + (startX + run/2) * unit, 
+                origin.y - (startY - 0.5) * unit);
+    
+    ctx.lineWidth = 1; // Reset line width
+  }
+
+  function drawUserLine() {
+    if (points.length >= 1) drawPoint(points[0].x, points[0].y);
+    if (points.length >= 2) {
+      drawPoint(points[1].x, points[1].y);
+      const x1 = points[0].x;
+      const y1 = points[0].y;
+      const x2 = points[1].x;
+      const y2 = points[1].y;
+      
+      // Draw a line segment between the points
+      ctx.strokeStyle = "#f44336";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(origin.x + x1 * unit, origin.y - y1 * unit);
+      ctx.lineTo(origin.x + x2 * unit, origin.y - y2 * unit);
+      ctx.stroke();
+      
+      // Now extend the line to cover the full graph
+      if (x1 !== x2) {
+        const m = (y2 - y1) / (x2 - x1);
+        const c = y1 - m * x1;
+        drawLine(m, c, false, 0, "red");
+      } else {
+        drawLine(0, 0, true, x1, "red");
+      }
+      ctx.lineWidth = 1;
+    }
+  }
+
+  function generateQuestion() {
+    drawGrid();
+    points = [];
+    document.getElementById("feedback").innerHTML = "";
+    document.getElementById("equationInput").value = "";
+    
+    // Show/hide answer input based on question mode
+    if (questionMode === "findEquation") {
+      answerContainer.style.display = "block";
+    } else {
+      answerContainer.style.display = "none";
+    }
+    
+    // Weighted random selection: 60% y=mx+c, 20% y=c+mx, 10% y=k, 10% x=k
+    const weights = [
+      { type: "y=mx+c", weight: 0.6 },
+      { type: "y=c+mx", weight: 0.2 },
+      { type: "y=k", weight: 0.1 },
+      { type: "x=k", weight: 0.1 }
+    ];
+    const rand = Math.random();
+    let sum = 0;
+    let type = "y=mx+c";
+    for (let w of weights) {
+      sum += w.weight;
+      if (rand <= sum) {
+        type = w.type;
+        break;
+      }
+    }
+
+    let m = 1, c = 0, xVal = 0, mStr = 1, num = 0, den = 0;
+    let eqn = "";
+    if (type === "y=k") {
+      c = randomInt(-5, 5);
+      m = 0;
+      eqn = `\\(y = ${c}\\)`;
+    } else if (type === "x=k") {
+      xVal = randomInt(-5, 5);
+      eqn = `\\(x = ${xVal}\\)`;
+    } else {
+      // allow simple fractions for m
+      const numerators = [-3, -2, -1, 1, 2, 3];
+      const denominators = [1, 2, 3, 4, 5];
+      num = numerators[Math.floor(Math.random() * numerators.length)];
+      den = denominators[Math.floor(Math.random() * denominators.length)];
+      m = num / den;
+      c = randomInt(-5, 5);
+      
+      // Format the gradient string correctly
+      if (m === 1) {
+        mStr = "";
+      } else if (m === -1) {
+        mStr = "-";
+      } else if (Math.floor(m) === m) {
+        // Integer
+        mStr = `${m}`;
+      } else {
+        // Fraction
+        if (num < 0) {
+          // Negative fraction
+          mStr = `-\\frac{${Math.abs(num)}}{${den}}`;
+        } else {
+          // Positive fraction
+          mStr = `\\frac{${num}}{${den}}`;
+        }
+      }
+      
+      // Format the entire equation with proper handling of negative numbers
+      if (type === "y=mx+c") {
+        if (c > 0) {
+          eqn = `\\(y = ${mStr}x + ${c}\\)`;
+        } else if (c < 0) {
+          eqn = `\\(y = ${mStr}x - ${Math.abs(c)}\\)`;
+        } else {
+          eqn = `\\(y = ${mStr}x\\)`;
+        }
+      } else { // y=c+mx
+        if (c > 0) {
+          eqn = `\\(y = ${c} + ${mStr}x\\)`;
+        } else if (c < 0) {
+          eqn = `\\(y = -${Math.abs(c)} + ${mStr}x\\)`;
+        } else {
+          eqn = `\\(y = ${mStr}x\\)`;
+        }
+      }
+    }
+
+    currentLine = { type, m, mStr, c, xVal, num, den };
+    
+    if (questionMode === "drawLine") {
+      document.getElementById("question").innerHTML = `On the axes below, draw the graph of <strong>${eqn}</strong>.<br>
+      Click two points to draw your line.`;
+    } else { // findEquation mode
+      document.getElementById("question").innerHTML = `Give the equation of the line shown below.`;
+      
+      // Draw the question line without the gradient triangle
+      if (type === "x=k") {
+        drawLine(0, 0, true, xVal, "blue");
+      } else {
+        drawLine(m, c, false, 0, "blue");
+      }
+    }
+    
+    MathJax.Hub.Queue(["Typeset", MathJax.Hub, "question"]);
+  }
+
+  function checkAnswer() {
+    if (questionMode === "drawLine") {
+      checkDrawnLine();
+    } else {
+      checkEquationAnswer();
+    }
+  }
+  
+  function checkDrawnLine() {
+    if (points.length < 2) {
+      document.getElementById("feedback").innerText = "Please click two points on the graph.";
+      return;
+    }
+    const [p1, p2] = points;
+    let match = false;
+    const { type, m, mStr, c, xVal, num, den } = currentLine;
+
+    if (type === "y=k") {
+      match = p1.y === c && p2.y === c;
+    } else if (type === "x=k") {
+      match = p1.x === xVal && p2.x === xVal;
+    } else {
+      const grad = (p2.y - p1.y) / (p2.x - p1.x);
+      const intercept = p1.y - grad * p1.x;
+      match = Math.abs(grad - m) < 0.1 && Math.abs(intercept - c) < 0.5;
+    }
+    document.getElementById("feedback").innerText = match ? "✅ Correct line!" : "❌ That's not quite right.";
+  }
+  
+  function checkEquationAnswer() {
+    const userInput = document.getElementById("equationInput").value.trim().toLowerCase();
+    if (!userInput) {
+      document.getElementById("feedback").innerText = "Please enter your answer in the input box.";
+      return;
+    }
+    
+    const { type, m, c, xVal, num, den } = currentLine;
+    let correct = false;
+    
+    if (type === "y=k") {
+      // Check for horizontal line y = c
+      const regex = /^y\s*=\s*(-?\d+)$/;
+      const match = userInput.match(regex);
+      if (match) {
+        const userC = parseInt(match[1]);
+        correct = (userC === c);
+      }
+    } else if (type === "x=k") {
+      // Check for vertical line x = k
+      const regex = /^x\s*=\s*(-?\d+)$/;
+      const match = userInput.match(regex);
+      if (match) {
+        const userX = parseInt(match[1]);
+        correct = (userX === xVal);
+      }
+    } else {
+      // For y = mx + c
+      // We need to handle various formats:
+      // y = mx + c, y = mx - c, y = x + c, y = -x + c, y = c + mx, etc.
+      let userM = null;
+      let userC = null;
+      
+      // Match y = mx + c or y = mx - c
+      const regexPlus = /^y\s*=\s*(-?\d*\/?-?\d*)?\s*x\s*([+-])\s*(\d+)$/;
+      const matchPlus = userInput.match(regexPlus);
+      
+      // Match y = mx (no constant)
+      const regexNoC = /^y\s*=\s*(-?\d*\/?-?\d*)?\s*x$/;
+      const matchNoC = userInput.match(regexNoC);
+      
+      // Match y = c + mx or y = c - mx
+      const regexCFirst = /^y\s*=\s*(-?\d+)\s*([+-])\s*(-?\d*\/?-?\d*)?\s*x$/;
+      const matchCFirst = userInput.match(regexCFirst);
+      
+      if (matchPlus) {
+        // Handle y = mx + c format
+        let mStr = matchPlus[1] || '1';
+        if (mStr === '-') mStr = '-1';
+        if (mStr === '') mStr = '1';
+        
+        // Handle fractions in user input
+        if (mStr.includes('/')) {
+          const [numStr, denStr] = mStr.split('/');
+          const userNum = parseInt(numStr || '1');
+          const userDen = parseInt(denStr || '1');
+          userM = userNum / userDen;
+        } else {
+          userM = parseFloat(mStr);
+        }
+        
+        // Handle the constant
+        const sign = matchPlus[2];
+        userC = parseInt(matchPlus[3]);
+        if (sign === '-') userC = -userC;
+        
+      } else if (matchNoC) {
+        // Handle y = mx format (no constant)
+        let mStr = matchNoC[1] || '1';
+        if (mStr === '-') mStr = '-1';
+        if (mStr === '') mStr = '1';
+        
+        // Handle fractions
+        if (mStr.includes('/')) {
+          const [numStr, denStr] = mStr.split('/');
+          const userNum = parseInt(numStr || '1');
+          const userDen = parseInt(denStr || '1');
+          userM = userNum / userDen;
+        } else {
+          userM = parseFloat(mStr);
+        }
+        
+        userC = 0;
+        
+      } else if (matchCFirst) {
+        // Handle y = c + mx format
+        userC = parseInt(matchCFirst[1]);
+        const sign = matchCFirst[2];
+        
+        let mStr = matchCFirst[3] || '1';
+        if (mStr === '-') mStr = '-1';
+        if (mStr === '') mStr = '1';
+        
+        // Handle fractions
+        if (mStr.includes('/')) {
+          const [numStr, denStr] = mStr.split('/');
+          const userNum = parseInt(numStr || '1');
+          const userDen = parseInt(denStr || '1');
+          userM = userNum / userDen;
+        } else {
+          userM = parseFloat(mStr);
+        }
+        
+        if (sign === '-') userM = -userM;
+      }
+      
+      // Check if the user's answer matches the actual line
+      if (userM !== null && userC !== null) {
+        const mDiff = Math.abs(userM - m);
+        const cDiff = Math.abs(userC - c);
+        correct = (mDiff < 0.01 && cDiff < 0.01);
+      }
+    }
+    
+    document.getElementById("feedback").innerText = correct ? 
+      "✅ Correct! Your equation matches the line." : 
+      "❌ That's not quite right. Try again or click 'Give Up' to see the solution.";
+  }
+
+  function showSolution() {
+    if (questionMode === "drawLine") {
+      showDrawLineSolution();
+    } else {
+      showEquationSolution();
+    }
+  }
+  
+  function showDrawLineSolution() {
+    drawGrid();
+    const { type, m, mStr, c, xVal, num, den } = currentLine;
+
+    // redraw student's line
+    if (points.length === 2) drawUserLine();
+
+    drawLine(m, c, type === "x=k", xVal);
+    
+    // Draw gradient triangle for non-vertical, non-horizontal lines
+    if (type !== "x=k" && type !== "y=k") {
+      drawGradientTriangle(m, c);
+    }
+
+    let explanation = "<strong>Solution:</strong><br><br>";
+    if (type === "y=k") {
+      explanation += `This is a horizontal line because all y-values are the same. The line is at y = ${c}.`;
+    } else if (type === "x=k") {
+      explanation += `This is a vertical line because all x-values are the same. The line is at x = ${xVal}.`;
+    } else {
+      explanation += `This line has gradient \\( m = ${mStr} \\) and y-intercept \\( c = ${c} \\).<br>
+      Start by plotting the y-intercept \\( (0, ${c}) \\), then follow the gradient \\( m = ${mStr} \\) to draw the line.<br>`;
+      
+      if (den > 1) {
+        explanation += `This means for every \\(${den}\\) units you move to the right, you ${num > 0 ? 'rise' : 'fall'} \\(${Math.abs(num)}\\) units.`;
+      } else {
+        explanation += `This means for every \\(1\\) unit you move to the right, you ${m > 0 ? 'rise' : 'fall'} \\(${Math.abs(m)}\\) units.`;
+      }
+    }
+    document.getElementById("feedback").innerHTML = explanation;
+    MathJax.Hub.Queue(["Typeset", MathJax.Hub, "feedback"]);
+  }
+  
+  function showEquationSolution() {
+    drawGrid();
+    const { type, m, mStr, c, xVal, num, den } = currentLine;
+
+    // Draw the line again
+    if (type === "x=k") {
+      drawLine(0, 0, true, xVal, "blue");
+    } else {
+      drawLine(m, c, false, 0, "blue");
+    }
+    
+    // Now draw the gradient triangle to help with the explanation
+    if (type !== "x=k" && type !== "y=k") {
+      drawGradientTriangle(m, c);
+    }
+
+    let explanation = "<strong>Solution:</strong><br><br>";
+    let equation = "";
+    
+    if (type === "y=k") {
+      explanation += `This is a horizontal line with equation \\(y = ${c}\\).<br><br>
+      For horizontal lines, all points have the same y-coordinate. The gradient is 0 because the line doesn't rise or fall as x increases.`;
+      equation = `\\(y = ${c}\\)`;
+    } else if (type === "x=k") {
+      explanation += `This is a vertical line with equation \\(x = ${xVal}\\).<br><br>
+      For vertical lines, all points have the same x-coordinate. The gradient is undefined because the line rises vertically with no horizontal movement.`;
+      equation = `\\(x = ${xVal}\\)`;
+    } else {
+      // Format the equation for display
+      if (c > 0) {
+        equation = `\\(y = ${mStr}x + ${c}\\)`;
+      } else if (c < 0) {
+        equation = `\\(y = ${mStr}x - ${Math.abs(c)}\\)`;
+      } else {
+        equation = `\\(y = ${mStr}x\\)`;
+      }
+      
+      explanation += `The equation of this line is ${equation}.<br><br>`;
+      
+      // Add details about finding the gradient and y-intercept
+      explanation += `To find this equation:<br>
+      1. The y-intercept is the point where the line crosses the y-axis at \\((0, ${c})\\), giving us \\(c = ${c}\\).<br>
+      2. The gradient can be calculated by looking at how much the line rises for a given horizontal distance.`;
+      
+      if (den > 1) {
+        explanation += `<br>For this line, when we move ${den} units horizontally, the line ${num > 0 ? 'rises' : 'falls'} by ${Math.abs(num)} units.<br>
+        So the gradient is \\(m = \\frac{${num}}{${den}} = ${m}\\).`;
+      } else {
+        explanation += `<br>For this line, when we move 1 unit horizontally, the line ${m > 0 ? 'rises' : 'falls'} by ${Math.abs(m)} units.<br>
+        So the gradient is \\(m = ${m}\\).`;
+      }
+      
+      explanation += `<br><br>Using the gradient-intercept form \\(y = mx + c\\), we get ${equation}.`;
+    }
+    
+    document.getElementById("feedback").innerHTML = explanation;
+    MathJax.Hub.Queue(["Typeset", MathJax.Hub, "feedback"]);
+  }
+
+  function randomInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  generateQuestion();
+</script>
+
+</body>
+</html>
